@@ -1,0 +1,113 @@
+# MVP Experiment: SPY Daily Prediction with LSTM
+# Goal: >55% directional accuracy on next-day SPY movement
+
+experiment:
+  name: "mvp_spy_lstm"
+  seed: 42
+  output_dir: "outputs"
+
+data:
+  provider: "yfinance"
+  symbols: ["SPY"]
+  start_date: "2024-03-01"
+  interval: "1h"
+  granularity: "hourly"
+  cache_dir: "data/cache"
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+
+features:
+  technical:
+    - sma_20
+    - sma_50
+    - rsi_14
+    - macd
+    - macd_signal
+    - bbands_upper
+    - bbands_lower
+    - atr_14
+  
+  price:
+    - log_returns
+    - volatility_20
+  
+  normalize: true
+  normalize_method: "zscore"
+
+model:
+  type: "transformer"
+  hidden_dim: 256
+  dropout: 0.2
+  lookback: 60
+  
+  transformer:
+    num_heads: 8
+    num_layers: 6
+    ff_dim: 1024
+  
+  heads:
+    direction:
+      enabled: true
+      num_classes: 3
+      threshold: 0.001
+    magnitude:
+      enabled: true
+    volatility:
+      enabled: true
+
+training:
+  trainer: "supervised"
+  epochs: 100
+  batch_size: 128
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  lookback: 60
+  device: "auto"
+  
+  scheduler:
+    type: "plateau"
+    patience: 10
+    factor: 0.5
+  
+  early_stopping:
+    enabled: true
+    patience: 20
+    min_delta: 0.0001
+  
+  loss_weights:
+    direction: 1.0
+    magnitude: 0.5
+    volatility: 0.3
+    use_uncertainty: true
+  
+  checkpoint:
+    save_best: true
+    save_every: 10
+    metric: "val_direction_accuracy"
+
+backtest:
+  initial_capital: 100000
+  
+  commission:
+    type: "per_share"
+    value: 0.01
+  
+  slippage:
+    type: "percentage"
+    value: 0.001
+  
+  position_sizing:
+    method: "fixed_fraction"
+    fraction: 0.2
+    max_position: 0.5
+
+risk:
+  max_drawdown: 0.2
+  daily_loss_limit: 0.05
+  max_positions: 1
+  max_position_size: 0.5
+  
+  kill_switch:
+    enabled: true
+    trigger_drawdown: 0.15

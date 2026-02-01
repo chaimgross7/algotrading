@@ -1,0 +1,158 @@
+# Default configuration for AlgoTrade
+# Override these values in experiment-specific configs
+
+experiment:
+  name: "default"
+  seed: 42
+  output_dir: "outputs"
+
+data:
+  provider: "yfinance"
+  symbols: ["SPY"]
+  start_date: "2020-01-01"
+  end_date: "2025-01-01"
+  granularity: "daily"  # daily, hourly, 5min, 1min
+  cache_dir: "data/cache"
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+
+features:
+  # Technical indicators to compute
+  technical:
+    - sma_20
+    - sma_50
+    - ema_12
+    - ema_26
+    - rsi_14
+    - macd
+    - macd_signal
+    - macd_hist
+    - bbands_upper
+    - bbands_middle
+    - bbands_lower
+    - atr_14
+  
+  # Price-derived features
+  price:
+    - log_returns
+    - returns_5d
+    - returns_10d
+    - volatility_20
+    - gap
+  
+  # Normalization
+  normalize: true
+  normalize_method: "zscore"  # zscore, minmax, robust
+
+model:
+  type: "lstm"  # lstm, transformer, ensemble
+  
+  # Common params
+  input_dim: null  # Set automatically from features
+  hidden_dim: 128
+  dropout: 0.2
+  
+  # LSTM specific
+  lstm:
+    num_layers: 2
+    bidirectional: false
+  
+  # Transformer specific
+  transformer:
+    num_heads: 8
+    num_layers: 4
+    ff_dim: 512
+  
+  # Prediction heads
+  heads:
+    direction:
+      enabled: true
+      num_classes: 3  # up, down, flat
+      threshold: 0.001  # Return threshold for up/down classification
+    magnitude:
+      enabled: true
+    volatility:
+      enabled: true
+
+training:
+  trainer: "supervised"  # supervised, rl
+  
+  # Common params
+  epochs: 100
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  lookback: 60  # Days of history for each sample
+  device: "auto"  # auto, cuda, cpu
+  
+  # Learning rate scheduler
+  scheduler:
+    type: "plateau"  # plateau, step, cosine
+    patience: 10
+    factor: 0.5
+  
+  # Early stopping
+  early_stopping:
+    enabled: true
+    patience: 20
+    min_delta: 0.0001
+  
+  # Multi-task loss weighting
+  loss_weights:
+    direction: 1.0
+    magnitude: 1.0
+    volatility: 0.5
+    use_uncertainty: true  # Auto-learn weights
+  
+  # Checkpointing
+  checkpoint:
+    save_best: true
+    save_every: 10
+    metric: "val_sharpe"  # Metric to determine best model
+
+  # RL specific (when trainer: rl)
+  rl:
+    gamma: 0.99
+    reward_type: "pnl"  # pnl, sharpe, sortino
+    episode_length: 252  # Trading days per episode
+
+backtest:
+  initial_capital: 100000
+  
+  # Transaction costs
+  commission:
+    type: "per_share"  # per_share, percentage
+    value: 0.01
+  
+  slippage:
+    type: "percentage"  # fixed, percentage, volatility
+    value: 0.001
+  
+  # Position sizing
+  position_sizing:
+    method: "fixed_fraction"  # fixed_fraction, kelly, volatility_target
+    fraction: 0.1  # 10% of capital per trade
+    max_position: 0.25  # Max 25% in single position
+
+risk:
+  # Drawdown limits
+  max_drawdown: 0.2  # 20% max drawdown
+  daily_loss_limit: 0.05  # 5% daily loss limit
+  
+  # Position limits
+  max_positions: 10
+  max_position_size: 0.25
+  
+  # Kill switch
+  kill_switch:
+    enabled: true
+    trigger_drawdown: 0.15
+
+logging:
+  level: "INFO"
+  mlflow:
+    tracking_uri: "outputs/mlruns"
+    experiment_name: null  # Uses experiment.name if null
+  tensorboard:
+    log_dir: "outputs/tensorboard"
