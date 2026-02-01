@@ -1,0 +1,49 @@
+# Large Transformer model for multi-symbol daily trading
+# More powerful architecture with deeper network and longer context
+# Data is configured separately via --data-config (default: NASDAQ 100)
+
+model:
+  type: transformer
+  lookback: 60              # 3 months of daily data
+  hidden_dim: 512           # 2x larger embedding dimension
+  num_layers: 12            # 2x deeper network
+  transformer:
+    num_heads: 16           # 2x more attention heads
+    ff_dim: 2048            # 2x larger feedforward
+  dropout: 0.3              # More regularization for larger model
+
+training:
+  epochs: 400
+  batch_size: 128           # Larger batches for stability
+  learning_rate: 0.0001     # Lower LR for larger model
+  weight_decay: 0.01
+  patience: 30              # More patience for larger model
+  
+  # Multi-task weights
+  direction_weight: 0.0     # Focus on magnitude regression
+  magnitude_weight: 1.0
+  volatility_weight: 0.3
+  
+  # Normalize labels for regression
+  normalize_labels: true
+  
+  # Learning rate warmup
+  warmup_epochs: 10
+  
+  # Adaptive plateau scheduler with restart
+  scheduler:
+    type: "adaptive_plateau"
+    patience: 10
+    factor: 0.1
+    max_reductions: 4
+    restart_lr_factor: 0.5
+
+features:
+  # Extended technical indicators
+  sma_windows: [5, 10, 20, 50, 100, 200]
+  ema_windows: [5, 10, 20, 50]
+  rsi_window: 14
+  macd: true
+  bollinger: true
+  atr: true
+  obv: true

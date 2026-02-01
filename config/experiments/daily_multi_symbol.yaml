@@ -1,0 +1,74 @@
+# Daily Multi-Symbol Training
+# Uses longer history and multiple ETFs for more training data
+# Data is configured separately via --data-config (default: NASDAQ 100)
+
+experiment:
+  name: "daily_multi_symbol"
+  seed: 42
+  output_dir: "outputs"
+
+features:
+  normalize: true
+  normalize_method: "zscore"
+
+model:
+  type: "lstm"
+  hidden_dim: 64
+  num_layers: 2
+  dropout: 0.3
+  lookback: 20
+  bidirectional: false
+  use_attention_pooling: true
+
+training:
+  trainer: "supervised"
+  epochs: 100
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  device: "auto"
+  
+  loss_weights:
+    direction: 0.0
+    magnitude: 1.0
+    volatility: 0.3
+  
+  normalize_labels: true
+  
+  scheduler:
+    type: "adaptive_plateau"
+    patience: 10
+    factor: 0.1
+    max_reductions: 4
+    restart_lr_factor: 0.5
+  
+  early_stopping:
+    enabled: true
+    patience: 20
+    min_delta: 0.0001
+  
+  warmup_epochs: 5
+  
+  checkpoint:
+    save_best: true
+    metric: "val_loss"
+
+backtest:
+  initial_capital: 100000
+  signal_mode: "magnitude"
+  long_threshold: 0.5
+  short_threshold: -0.5
+  
+  commission:
+    type: "per_share"
+    value: 0.01
+  
+  slippage:
+    type: "percentage"
+    value: 0.001
+
+risk:
+  max_drawdown: 0.2
+  daily_loss_limit: 0.05
+  max_positions: 1
+  max_position_size: 0.5

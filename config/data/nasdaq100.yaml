@@ -1,0 +1,14 @@
+# NASDAQ 100 Data Configuration
+# Use symbols_preset to leverage algotrade/data/symbols.py list
+
+data:
+  provider: "yfinance"
+  symbols_preset: "nasdaq100"  # Resolves to full NASDAQ 100 from symbols.py
+  start_date: "2015-01-01"     # 10+ years of daily data
+  end_date: null               # Use latest available
+  interval: "1d"
+  granularity: "daily"
+  cache_dir: "data/cache"
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15

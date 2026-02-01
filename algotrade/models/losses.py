@@ -5,6 +5,11 @@ import torch
 import torch.nn as nn
 
 
+def _ensure_2d(tensor: torch.Tensor) -> torch.Tensor:
+    """Ensure tensor has 2 dimensions (batch, 1) for MSE loss."""
+    return tensor.unsqueeze(-1) if tensor.dim() == 1 else tensor
+
+
 class MultiTaskLoss(nn.Module):
     """Combined loss for direction (CE) + magnitude (MSE) + volatility (MSE)."""
     
@@ -14,14 +19,18 @@ class MultiTaskLoss(nn.Module):
         magnitude_weight: float = 1.0,
         volatility_weight: float = 0.5,
         class_weights: Optional[List[float]] = None,
+        label_smoothing: float = 0.1,
     ):
         super().__init__()
         self.weights = {"direction": direction_weight, "magnitude": magnitude_weight, "volatility": volatility_weight}
         # Class weights: [down, flat, up] - higher weight for minority classes
         if class_weights is not None:
-            self.ce = nn.CrossEntropyLoss(weight=torch.tensor(class_weights, dtype=torch.float32))
+            self.ce = nn.CrossEntropyLoss(
+                weight=torch.tensor(class_weights, dtype=torch.float32),
+                label_smoothing=label_smoothing,
+            )
         else:
-            self.ce = nn.CrossEntropyLoss()
+            self.ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
         self.mse = nn.MSELoss()
     
     def forward(
@@ -33,18 +42,16 @@ class MultiTaskLoss(nn.Module):
         losses = {}
         total = 0.0
         
-        if "direction" in preds and "direction" in targets:
+        if "direction" in preds and "direction" in targets and self.weights["direction"] > 0:
             losses["direction"] = self.ce(preds["direction"], targets["direction"].long())
             total += self.weights["direction"] * losses["direction"]
         
         if "magnitude" in preds and "magnitude" in targets:
-            t = targets["magnitude"].unsqueeze(-1) if targets["magnitude"].dim() == 1 else targets["magnitude"]
-            losses["magnitude"] = self.mse(preds["magnitude"], t)
+            losses["magnitude"] = self.mse(preds["magnitude"], _ensure_2d(targets["magnitude"]))
             total += self.weights["magnitude"] * losses["magnitude"]
         
         if "volatility" in preds and "volatility" in targets:
-            t = targets["volatility"].unsqueeze(-1) if targets["volatility"].dim() == 1 else targets["volatility"]
-            losses["volatility"] = self.mse(preds["volatility"], t)
+            losses["volatility"] = self.mse(preds["volatility"], _ensure_2d(targets["volatility"]))
             total += self.weights["volatility"] * losses["volatility"]
         
         return (total, losses) if return_components else total
@@ -53,14 +60,14 @@ class MultiTaskLoss(nn.Module):
 class UncertaintyWeightedLoss(nn.Module):
     """Learns task weights via homoscedastic uncertainty (Kendall et al., 2018)."""
     
-    def __init__(self):
+    def __init__(self, label_smoothing: float = 0.1):
         super().__init__()
         self.log_vars = nn.ParameterDict({
             "direction": nn.Parameter(torch.zeros(1)),
             "magnitude": nn.Parameter(torch.zeros(1)),
             "volatility": nn.Parameter(torch.zeros(1)),
         })
-        self.ce = nn.CrossEntropyLoss()
+        self.ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
         self.mse = nn.MSELoss()
     
     def forward(
@@ -80,8 +87,7 @@ class UncertaintyWeightedLoss(nn.Module):
         
         for key in ["magnitude", "volatility"]:
             if key in preds and key in targets:
-                t = targets[key].unsqueeze(-1) if targets[key].dim() == 1 else targets[key]
-                loss = self.mse(preds[key], t)
+                loss = self.mse(preds[key], _ensure_2d(targets[key]))
                 precision = torch.exp(-self.log_vars[key])
                 losses[key] = loss
                 total += 0.5 * precision * loss + 0.5 * self.log_vars[key]

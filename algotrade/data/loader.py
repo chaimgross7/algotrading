@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Union, List
 from datetime import datetime
+import time
 import pandas as pd
 import yfinance as yf
 import logging
@@ -69,10 +70,14 @@ def fetch_data(
                     all_data.append(filtered)
                     continue
         
-        # Fetch from yfinance
+        # Fetch from yfinance with error handling
         logger.info(f"Fetching {symbol} from Yahoo Finance...")
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(start=start, end=end, interval=interval)
+        try:
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(start=start, end=end, interval=interval)
+        except Exception as e:
+            logger.error(f"Failed to fetch {symbol}: {e}")
+            continue
         
         if df.empty:
             logger.warning(f"No data for {symbol}")
@@ -89,6 +94,10 @@ def fetch_data(
         
         all_data.append(df)
         logger.info(f"Fetched {symbol}: {len(df)} rows")
+        
+        # Rate limiting to avoid yfinance API throttling
+        if len(symbols) > 1:
+            time.sleep(0.3)
     
     if not all_data:
         raise ValueError(f"No data fetched for symbols: {symbols}")

@@ -11,17 +11,15 @@ except ImportError:
     HAS_PANDAS_TA = False
 
 
-def compute_features(df: pd.DataFrame, config: Dict = None) -> pd.DataFrame:
-    """Compute all features from OHLCV data."""
-    config = config or {}
-    features = pd.DataFrame(index=df.index)
-    
-    close = df["close"]
-    high = df["high"]
-    low = df["low"]
-    volume = df["volume"]
-    
-    # Price features
+def _compute_price_features(
+    features: pd.DataFrame,
+    close: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    open_: pd.Series,
+    config: Dict,
+) -> None:
+    """Compute price-based features (returns, volatility, moving averages)."""
     features["log_return"] = np.log(close / close.shift(1))
     features["volatility_20"] = features["log_return"].rolling(20).std()
     features["volatility_5"] = features["log_return"].rolling(5).std()
@@ -31,9 +29,22 @@ def compute_features(df: pd.DataFrame, config: Dict = None) -> pd.DataFrame:
         features[f"sma_{period}"] = close.rolling(period).mean()
         features[f"sma_{period}_ratio"] = close / features[f"sma_{period}"]
     
-    # RSI
+    # Price range
+    features["high_low_pct"] = (high - low) / close
+    features["close_open_pct"] = (close - open_) / open_
+
+
+def _compute_technical_features(
+    features: pd.DataFrame,
+    close: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    volume: pd.Series,
+) -> None:
+    """Compute technical indicators (RSI, MACD, BB, ATR, volume)."""
     if HAS_PANDAS_TA:
         features["rsi_14"] = ta.rsi(close, length=14)
+        
         macd = ta.macd(close)
         if macd is not None:
             features["macd"] = macd.iloc[:, 0]
@@ -58,10 +69,87 @@ def compute_features(df: pd.DataFrame, config: Dict = None) -> pd.DataFrame:
     # Volume features
     features["volume_sma_20"] = volume.rolling(20).mean()
     features["volume_ratio"] = volume / features["volume_sma_20"]
+
+
+def _compute_temporal_features(features: pd.DataFrame, index: pd.Index) -> None:
+    """Compute cyclical temporal features (hour, day of week, month)."""
+    if not isinstance(index, pd.DatetimeIndex):
+        return
     
-    # Price range
-    features["high_low_pct"] = (high - low) / close
-    features["close_open_pct"] = (close - df["open"]) / df["open"]
+    # Hour of day (for intraday data) - cyclical encoding
+    hour = index.hour
+    features["hour_sin"] = np.sin(2 * np.pi * hour / 24)
+    features["hour_cos"] = np.cos(2 * np.pi * hour / 24)
+    
+    # Day of week - cyclical encoding
+    dow = index.dayofweek
+    features["dow_sin"] = np.sin(2 * np.pi * dow / 7)
+    features["dow_cos"] = np.cos(2 * np.pi * dow / 7)
+    
+    # Month - cyclical encoding (for seasonality)
+    month = index.month
+    features["month_sin"] = np.sin(2 * np.pi * month / 12)
+    features["month_cos"] = np.cos(2 * np.pi * month / 12)
+
+
+def _compute_regime_features(
+    features: pd.DataFrame,
+    close: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+) -> None:
+    """Compute market regime indicators (trend, volatility regime, momentum)."""
+    # MA crossover signals (trend regime)
+    sma_50 = features.get("sma_50", close.rolling(50).mean())
+    sma_200 = close.rolling(200).mean()
+    features["ma_cross_50_200"] = (sma_50 > sma_200).astype(float)
+    features["ma_distance_50_200"] = (sma_50 - sma_200) / close
+    
+    # Volatility regime (high/low vol)
+    vol_20 = features.get("volatility_20", features["log_return"].rolling(20).std())
+    vol_60 = features["log_return"].rolling(60).std()
+    features["vol_regime"] = vol_20 / vol_60
+    
+    # Momentum regime
+    features["momentum_20"] = close.pct_change(20)
+    features["momentum_60"] = close.pct_change(60)
+    
+    # Mean reversion indicator (distance from 20-day mean)
+    features["mean_reversion_20"] = (close - close.rolling(20).mean()) / close.rolling(20).std()
+    
+    # Trend strength (ADX-like using directional movement)
+    if "atr_14" in features.columns:
+        atr = features["atr_14"]
+    else:
+        tr = pd.concat([
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low - close.shift(1)).abs()
+        ], axis=1).max(axis=1)
+        atr = tr.rolling(14).mean()
+    
+    plus_dm = (high - high.shift(1)).clip(lower=0)
+    minus_dm = (low.shift(1) - low).clip(lower=0)
+    plus_di = 100 * (plus_dm.rolling(14).mean() / atr)
+    minus_di = 100 * (minus_dm.rolling(14).mean() / atr)
+    features["di_diff"] = plus_di - minus_di
+
+
+def compute_features(df: pd.DataFrame, config: Dict = None) -> pd.DataFrame:
+    """Compute all features from OHLCV data."""
+    config = config or {}
+    features = pd.DataFrame(index=df.index)
+    
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
+    open_ = df["open"]
+    volume = df["volume"]
+    
+    _compute_price_features(features, close, high, low, open_, config)
+    _compute_technical_features(features, close, high, low, volume)
+    _compute_temporal_features(features, df.index)
+    _compute_regime_features(features, close, high, low)
     
     return features
 

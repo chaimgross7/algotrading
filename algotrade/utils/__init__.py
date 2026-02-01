@@ -1,9 +1,10 @@
 """Utility functions."""
 
+import copy
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import yaml
 import torch
 
@@ -36,10 +37,57 @@ def get_device(device: str = "auto") -> torch.device:
     return torch.device(device)
 
 
-def load_config(path: str) -> Dict[str, Any]:
-    """Load YAML config file."""
+def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Recursively merge two dictionaries.
+    
+    Values from `override` take precedence. Nested dicts are merged recursively.
+    
+    Args:
+        base: Base configuration dictionary
+        override: Override configuration dictionary
+    
+    Returns:
+        Merged configuration dictionary
+    """
+    result = copy.deepcopy(base)
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
+
+
+def load_config(
+    path: str,
+    data_config: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Load YAML config file with optional data config merging.
+    
+    Args:
+        path: Path to the main experiment config file
+        data_config: Optional path to a separate data config file.
+                     If provided, its 'data' section is merged into the result.
+    
+    Returns:
+        Merged configuration dictionary
+    """
     with open(path) as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    
+    # Merge data config if provided
+    if data_config:
+        with open(data_config) as f:
+            data_cfg = yaml.safe_load(f)
+        # Data config's 'data' section takes precedence, then experiment config can override
+        if "data" in data_cfg:
+            base_data = data_cfg.get("data", {})
+            exp_data = config.get("data", {})
+            config["data"] = deep_merge(base_data, exp_data)
+    
+    return config
 
 
 def save_config(config: Dict[str, Any], path: str):

@@ -1,9 +1,10 @@
-# MVP Experiment: SPY Daily Prediction with LSTM
-# Goal: >55% directional accuracy on next-day SPY movement
+# SPY Magnitude Regression Experiment
+# Focus on predicting return magnitude instead of direction classification
+# This avoids the class imbalance problem (67% FLAT)
 # Data is configured separately via --data-config (default: NASDAQ 100)
 
 experiment:
-  name: "mvp_spy_lstm"
+  name: "spy_magnitude_regression"
   seed: 42
   output_dir: "outputs"
 
@@ -35,16 +36,6 @@ model:
     num_heads: 8
     num_layers: 6
     ff_dim: 1024
-  
-  heads:
-    direction:
-      enabled: true
-      num_classes: 3
-      threshold: 0.001
-    magnitude:
-      enabled: true
-    volatility:
-      enabled: true
 
 training:
   trainer: "supervised"
@@ -55,32 +46,35 @@ training:
   lookback: 60
   device: "auto"
   
+  # Focus training on magnitude prediction
+  loss_weights:
+    direction: 0.0      # Disabled - no classification
+    magnitude: 1.0      # Primary focus
+    volatility: 0.3     # Secondary - helps with risk sizing
+  
   scheduler:
     type: "adaptive_plateau"
     patience: 10
     factor: 0.1
     max_reductions: 4
     restart_lr_factor: 0.5
-    factor: 0.5
   
   early_stopping:
     enabled: true
     patience: 20
     min_delta: 0.0001
   
-  loss_weights:
-    direction: 1.0
-    magnitude: 0.5
-    volatility: 0.3
-    use_uncertainty: true
+  warmup_epochs: 5
   
   checkpoint:
     save_best: true
-    save_every: 10
-    metric: "val_direction_accuracy"
+    metric: "val_loss"
 
 backtest:
   initial_capital: 100000
+  signal_mode: "magnitude"
+  long_threshold: 0.002     # Go long if predicted return > 0.2%
+  short_threshold: -0.002   # Go short if predicted return < -0.2%
   
   commission:
     type: "per_share"

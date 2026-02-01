@@ -1,0 +1,14 @@
+# SPY-only Data Configuration
+# For quick debugging and testing runs
+
+data:
+  provider: "yfinance"
+  symbols: ["SPY"]             # Single symbol for fast iteration
+  start_date: "2020-01-01"
+  end_date: null
+  interval: "1d"
+  granularity: "daily"
+  cache_dir: "data/cache"
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15

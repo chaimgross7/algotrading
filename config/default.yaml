@@ -1,17 +1,15 @@
 # Default configuration for AlgoTrade
 # Override these values in experiment-specific configs
+# Data is configured separately via --data-config (default: config/data/nasdaq100.yaml)
 
 experiment:
   name: "default"
   seed: 42
   output_dir: "outputs"
 
+# Default data settings (fallbacks only - use config/data/*.yaml for symbols)
 data:
   provider: "yfinance"
-  symbols: ["SPY"]
-  start_date: "2020-01-01"
-  end_date: "2025-01-01"
-  granularity: "daily"  # daily, hourly, 5min, 1min
   cache_dir: "data/cache"
   train_ratio: 0.7
   val_ratio: 0.15
@@ -86,11 +84,14 @@ training:
   lookback: 60  # Days of history for each sample
   device: "auto"  # auto, cuda, cpu
   
-  # Learning rate scheduler
+  # Learning rate scheduler (AdaptivePlateauScheduler)
+  # Reduces LR by factor on plateau, restarts after max_reductions to escape local minima
   scheduler:
-    type: "plateau"  # plateau, step, cosine
+    type: "adaptive_plateau"
     patience: 10
-    factor: 0.5
+    factor: 0.1  # Reduce LR by 1/10 on plateau
+    max_reductions: 4  # After 4 reductions, restart LR
+    restart_lr_factor: 0.5  # Restart to 50% of initial LR
   
   # Early stopping
   early_stopping:
